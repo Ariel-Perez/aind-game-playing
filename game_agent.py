@@ -7,6 +7,7 @@ You must test your agent's strength against a set of agents with known
 relative strength using tournament.py and include the results in your report.
 """
 import math
+import collections
 # import random
 
 
@@ -14,6 +15,59 @@ class Timeout(Exception):
     """Subclass base exception for code clarity."""
 
     pass
+
+
+def evaluate_split(game):
+    """
+    Check for a split in the board.
+
+    If the board is split return the player who wins.
+    """
+    ap_position = game.get_player_location(game.active_player)
+    ip_position = game.get_player_location(game.inactive_player)
+
+    if ap_position == game.NOT_MOVED or ip_position == game.NOT_MOVED:
+        return None
+
+    ap_reachable, ap_adjacency = reachable_positions(game, ap_position)
+    ip_moves = set(game.__get_moves__(ip_position))
+    if ap_reachable.intersection(ip_moves):
+        return None
+
+    ip_reachable, ip_adjacency = reachable_positions(game, ip_position)
+
+    ap_moves = approximate_moves(ap_reachable, ap_adjacency)
+    ip_moves = approximate_moves(ip_reachable, ip_adjacency)
+
+    return 1000 * (ap_moves - ip_moves)
+
+
+def reachable_positions(game, initial_position):
+    """Get all reachable positions from a given start."""
+    seen = set()
+    adjacency = collections.defaultdict(list)
+    queue = [initial_position]
+    while queue:
+        current = queue.pop()
+        moves = set(game.__get_moves__(current))
+        adjacency[current] += [moves]
+
+        new_moves = moves - seen
+        seen.update(new_moves)
+        queue.extend(new_moves)
+
+    return seen, adjacency
+
+
+def approximate_moves(reachable_positions, adjacency):
+    """Count the number of possible moves once a split was found."""
+    n_isolated_nodes = 0
+    for adjacent_nodes in adjacency.values():
+        if len(adjacent_nodes) == 1:
+            n_isolated_nodes += 1
+
+    penalization = max(n_isolated_nodes - 2, 0)
+    return - len(reachable_positions) + penalization
 
 
 def custom_score(game, player):
@@ -37,13 +91,22 @@ def custom_score(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-    ap_legal_moves = game.get_legal_moves()
-    ip_legal_moves = game.get_legal_moves(game.inactive_player)
+    if game.is_loser(player):
+        return float("-inf")
 
-    score = len(ap_legal_moves) - len(ip_legal_moves)
+    if game.is_winner(player):
+        return float("inf")
 
-    if len(ip_legal_moves) == 1 and ip_legal_moves[0] in ap_legal_moves:
-        score = float('inf')
+    split_evaluation = False  # evaluate_split(game)
+    if split_evaluation:
+        score = split_evaluation
+    else:
+        ap_legal_moves = game.get_legal_moves(game.active_player)
+        ip_legal_moves = game.get_legal_moves(game.inactive_player)
+        # if len(ip_legal_moves) == 1 and ip_legal_moves[0] in ap_legal_moves:
+        #     score = float('inf')
+        # else:
+        score = len(ap_legal_moves) - len(ip_legal_moves)
 
     if player != game.active_player:
         score = -score
